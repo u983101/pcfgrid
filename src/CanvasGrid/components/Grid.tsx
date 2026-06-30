@@ -8,6 +8,7 @@ import {
     IDetailsHeaderProps,
     CheckboxVisibility,
     ColumnActionsMode,
+    IGroup,
 } from '@fluentui/react/lib/DetailsList';
 import { Stack, IStackTokens } from '@fluentui/react/lib/Stack';
 import { IRenderFunction } from '@fluentui/react/lib/Utilities';
@@ -86,6 +87,52 @@ function applyTextFilters(
     });
 }
 
+function groupItems(
+    items: ComponentFramework.PropertyHelper.DataSetApi.EntityRecord[],
+    groupByColumn: string | null
+): { orderedItems: ComponentFramework.PropertyHelper.DataSetApi.EntityRecord[]; groups: IGroup[] | undefined } {
+    if (!groupByColumn) {
+        return { orderedItems: items, groups: undefined };
+    }
+
+    const sorted = items.slice().sort((a, b) => {
+        const va = (a?.getFormattedValue(groupByColumn) || '').toLowerCase();
+        const vb = (b?.getFormattedValue(groupByColumn) || '').toLowerCase();
+        return va.localeCompare(vb);
+    });
+
+    const groups: IGroup[] = [];
+    let start = 0;
+    let currentRaw: string | null = null;
+
+    for (let i = 0; i < sorted.length; i++) {
+        const raw = (sorted[i]?.getFormattedValue(groupByColumn) || '').toLowerCase();
+        if (currentRaw === null) {
+            currentRaw = raw;
+            start = 0;
+        } else if (raw !== currentRaw) {
+            groups.push({
+                key: 'g-' + groups.length,
+                name: currentRaw || '(empty)',
+                startIndex: start,
+                count: i - start,
+            });
+            start = i;
+            currentRaw = raw;
+        }
+    }
+    if (currentRaw !== null) {
+        groups.push({
+            key: 'g-' + groups.length,
+            name: currentRaw || '(empty)',
+            startIndex: start,
+            count: sorted.length - start,
+        });
+    }
+
+    return { orderedItems: sorted, groups };
+}
+
 export const Grid = React.memo((props: GridProps) => {
     const {
         records,
@@ -111,6 +158,7 @@ export const Grid = React.memo((props: GridProps) => {
     });
 
     const [filters, setFilters] = React.useState<Record<string, string>>({});
+    const [groupByColumn, setGroupByColumn] = React.useState<string | null>(null);
     const [isColumnsPanelOpen, setIsColumnsPanelOpen] = React.useState(false);
     const [menuState, setMenuState] = React.useState<{ column: string; target: HTMLElement } | null>(null);
     const [filterCallout, setFilterCallout] = React.useState<{ column: string; target: HTMLElement } | null>(null);
@@ -135,20 +183,20 @@ export const Grid = React.memo((props: GridProps) => {
         }
     });
 
-    const items = React.useMemo(() => {
+    const { orderedItems, groups } = React.useMemo(() => {
         const rawItems = sortedRecordIds.map((id) => records[id]);
         const filtered = applyTextFilters(rawItems, filters);
-        if (!sortState.name) {
-            return filtered;
-        }
-        return filtered.slice().sort((a, b) => {
-            const va = (a?.getFormattedValue(sortState.name!) || '').toLowerCase();
-            const vb = (b?.getFormattedValue(sortState.name!) || '').toLowerCase();
-            if (va < vb) return sortState.descending ? 1 : -1;
-            if (va > vb) return sortState.descending ? -1 : 1;
-            return 0;
-        });
-    }, [records, sortedRecordIds, sortState, filters]);
+        const sorted = !sortState.name
+            ? filtered
+            : filtered.slice().sort((a, b) => {
+                  const va = (a?.getFormattedValue(sortState.name!) || '').toLowerCase();
+                  const vb = (b?.getFormattedValue(sortState.name!) || '').toLowerCase();
+                  if (va < vb) return sortState.descending ? 1 : -1;
+                  if (va > vb) return sortState.descending ? -1 : 1;
+                  return 0;
+              });
+        return groupItems(sorted, groupByColumn);
+    }, [records, sortedRecordIds, sortState, filters, groupByColumn]);
 
     const handleColumnClick = React.useCallback((ev: React.MouseEvent<HTMLElement>, column: IColumn) => {
         if (!column.key) return;
@@ -177,6 +225,16 @@ export const Grid = React.memo((props: GridProps) => {
                 onClick: () => sortByMenu(columnName, true),
             },
             { key: 'divider1', itemType: 1 }, // Divider
+            {
+                key: 'group',
+                text: groupByColumn === columnName ? 'Ungroup' : 'Group by',
+                iconProps: { iconName: 'GroupedList' },
+                onClick: () => {
+                    setGroupByColumn(groupByColumn === columnName ? null : columnName);
+                    setMenuState(null);
+                },
+            },
+            { key: 'divider2', itemType: 1 },
             {
                 key: 'filter',
                 text: hasFilter ? 'Edit filter' : 'Filter by',
@@ -226,6 +284,7 @@ export const Grid = React.memo((props: GridProps) => {
                     isSorted,
                     isSortedDescending: isSorted ? sortState.descending : false,
                     isFiltered: !!filters[col.name],
+                    isGrouped: groupByColumn === col.name,
                     columnActionsMode: ColumnActionsMode.hasDropdown,
                     onColumnClick: handleColumnClick,
                     data: col,
@@ -304,7 +363,8 @@ export const Grid = React.memo((props: GridProps) => {
                     columns={gridColumns}
                     onRenderItemColumn={onRenderItemColumn}
                     onRenderDetailsHeader={onRenderDetailsHeader}
-                    items={items}
+                    items={orderedItems}
+                    groups={groups}
                     layoutMode={DetailsListLayoutMode.fixedColumns}
                     constrainMode={ConstrainMode.unconstrained}
                     setKey="set"

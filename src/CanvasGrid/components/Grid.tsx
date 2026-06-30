@@ -23,6 +23,7 @@ import {
     DefaultButton,
     Text,
     CommandBarButton,
+    SearchBox,
 } from '@fluentui/react';
 
 initializeIcons(undefined, { disableWarnings: true });
@@ -158,6 +159,7 @@ export const Grid = React.memo((props: GridProps) => {
     });
 
     const [filters, setFilters] = React.useState<Record<string, string>>({});
+    const [globalSearch, setGlobalSearch] = React.useState('');
     const [groupByColumn, setGroupByColumn] = React.useState<string | null>(null);
     const [isColumnsPanelOpen, setIsColumnsPanelOpen] = React.useState(false);
     const [menuState, setMenuState] = React.useState<{ column: string; target: HTMLElement } | null>(null);
@@ -185,7 +187,21 @@ export const Grid = React.memo((props: GridProps) => {
 
     const { orderedItems, groups } = React.useMemo(() => {
         const rawItems = sortedRecordIds.map((id) => records[id]);
-        const filtered = applyTextFilters(rawItems, filters);
+
+        // Global search across all visible columns
+        const searchText = globalSearch.toLowerCase().trim();
+        const searched = !searchText
+            ? rawItems
+            : rawItems.filter(item => {
+                  for (const col of columns) {
+                      if (col.isHidden || !visibleColumns.has(col.name)) continue;
+                      const val = (item?.getFormattedValue(col.name) || '').toLowerCase();
+                      if (val.indexOf(searchText) !== -1) return true;
+                  }
+                  return false;
+              });
+
+        const filtered = applyTextFilters(searched, filters);
         const sorted = !sortState.name
             ? filtered
             : filtered.slice().sort((a, b) => {
@@ -196,7 +212,7 @@ export const Grid = React.memo((props: GridProps) => {
                   return 0;
               });
         return groupItems(sorted, groupByColumn);
-    }, [records, sortedRecordIds, sortState, filters, groupByColumn]);
+    }, [records, sortedRecordIds, sortState, filters, groupByColumn, globalSearch, columns, visibleColumns]);
 
     const handleColumnClick = React.useCallback((ev: React.MouseEvent<HTMLElement>, column: IColumn) => {
         if (!column.key) return;
@@ -341,6 +357,13 @@ export const Grid = React.memo((props: GridProps) => {
                         styles={{ root: { height: 32 } }}
                     />
                 )}
+                <SearchBox
+                    placeholder="Search all fields"
+                    value={globalSearch}
+                    onChange={(ev, newValue) => setGlobalSearch(newValue || '')}
+                    onClear={() => setGlobalSearch('')}
+                    styles={{ root: { flex: 1, maxWidth: 300 } }}
+                />
                 <Panel
                     isOpen={isColumnsPanelOpen}
                     onDismiss={() => setIsColumnsPanelOpen(false)}

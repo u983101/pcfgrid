@@ -69,6 +69,12 @@ export const Grid = React.memo((props: GridProps) => {
         return new Set(columns.filter(c => !c.isHidden).map(c => c.name));
     });
 
+    // Sort state: which column and direction
+    const [sortState, setSortState] = React.useState<{ name: string | null; descending: boolean }>({
+        name: null,
+        descending: false,
+    });
+
     const [isPanelOpen, setIsPanelOpen] = React.useState(false);
     const prevDisplayedColumns = React.useRef(displayedColumns);
 
@@ -94,16 +100,35 @@ export const Grid = React.memo((props: GridProps) => {
     });
 
     const items = React.useMemo(() => {
-        return sortedRecordIds.map((id) => records[id]);
-    }, [records, sortedRecordIds]);
+        const rawItems = sortedRecordIds.map((id) => records[id]);
+        if (!sortState.name) {
+            return rawItems;
+        }
+        const sorted = rawItems.slice().sort((a, b) => {
+            const va = (a?.getFormattedValue(sortState.name!) || '').toLowerCase();
+            const vb = (b?.getFormattedValue(sortState.name!) || '').toLowerCase();
+            if (va < vb) return sortState.descending ? 1 : -1;
+            if (va > vb) return sortState.descending ? -1 : 1;
+            return 0;
+        });
+        return sorted;
+    }, [records, sortedRecordIds, sortState]);
+
+    const handleColumnClick = React.useCallback((event: React.MouseEvent<HTMLElement>, column: IColumn) => {
+        if (!column.key) return;
+        setSortState(prev => ({
+            name: column.key,
+            descending: prev.name === column.key ? !prev.descending : false,
+        }));
+    }, []);
 
     const gridColumns = React.useMemo(() => {
         return columns
             .filter((col) => !col.isHidden && visibleColumns.has(col.name))
             .map((col) => {
-                // Estimate width needed for header text (average char ~8px)
-                const headerWidth = col.displayName.length * 8 + 24; // 24px padding
+                const headerWidth = col.displayName.length * 8 + 24;
                 const dataWidth = col.visualSizeFactor > 0 ? col.visualSizeFactor : 150;
+                const isSorted = sortState.name === col.name;
                 return {
                     key: col.name,
                     name: col.displayName,
@@ -111,10 +136,13 @@ export const Grid = React.memo((props: GridProps) => {
                     width: Math.max(headerWidth, dataWidth),
                     minWidth: Math.max(50, headerWidth),
                     isResizable: true,
+                    isSorted,
+                    isSortedDescending: isSorted ? sortState.descending : false,
+                    onColumnClick: handleColumnClick,
                     data: col,
                 } as IColumn;
             });
-    }, [columns, visibleColumns]);
+    }, [columns, visibleColumns, sortState, handleColumnClick]);
 
     const toggleColumn = (columnName: string) => {
         setVisibleColumns(prev => {

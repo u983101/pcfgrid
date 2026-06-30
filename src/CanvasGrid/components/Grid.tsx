@@ -426,28 +426,30 @@ export const Grid = React.memo((props: GridProps) => {
     };
 
     const gridColumns = React.useMemo(() => {
-        return columns
-            .filter((col) => !col.isHidden && visibleColumns.includes(col.name))
-            .map((col) => {
-                const headerWidth = col.displayName.length * 8 + 24;
-                const dataWidth = col.visualSizeFactor > 0 ? col.visualSizeFactor : 150;
-                const isSorted = sortState.name === col.name;
-                return {
-                    key: col.name,
-                    name: col.displayName,
-                    fieldName: col.name,
-                    width: Math.max(headerWidth, dataWidth),
-                    minWidth: Math.max(50, headerWidth),
-                    isResizable: true,
-                    isSorted,
-                    isSortedDescending: isSorted ? sortState.descending : false,
-                    isFiltered: !!filters[col.name],
-                    isGrouped: groupByColumn === col.name,
-                    columnActionsMode: ColumnActionsMode.hasDropdown,
-                    onColumnClick: handleColumnClick,
-                    data: col,
-                } as IColumn;
-            });
+        const colMap = new Map(columns.filter(c => !c.isHidden).map(c => [c.name, c]));
+        const ordered = visibleColumns
+            .filter(name => colMap.has(name))
+            .map(name => colMap.get(name)!);
+        return ordered.map((col) => {
+            const headerWidth = col.displayName.length * 8 + 24;
+            const dataWidth = col.visualSizeFactor > 0 ? col.visualSizeFactor : 150;
+            const isSorted = sortState.name === col.name;
+            return {
+                key: col.name,
+                name: col.displayName,
+                fieldName: col.name,
+                width: Math.max(headerWidth, dataWidth),
+                minWidth: Math.max(50, headerWidth),
+                isResizable: true,
+                isSorted,
+                isSortedDescending: isSorted ? sortState.descending : false,
+                isFiltered: !!filters[col.name],
+                isGrouped: groupByColumn === col.name,
+                columnActionsMode: ColumnActionsMode.hasDropdown,
+                onColumnClick: handleColumnClick,
+                data: col,
+            } as IColumn;
+        });
     }, [columns, visibleColumns, sortState, filters, handleColumnClick]);
 
     const toggleColumn = (columnName: string) => {

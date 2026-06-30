@@ -9,8 +9,10 @@ import {
     CheckboxVisibility,
     ColumnActionsMode,
     IGroup,
+    SelectionMode,
 } from '@fluentui/react/lib/DetailsList';
 import { Stack, IStackTokens } from '@fluentui/react/lib/Stack';
+import { Selection } from '@fluentui/react/lib/Selection';
 import { IRenderFunction } from '@fluentui/react/lib/Utilities';
 import {
     Checkbox,
@@ -161,6 +163,14 @@ export const Grid = React.memo((props: GridProps) => {
     const [filters, setFilters] = React.useState<Record<string, string>>({});
     const [globalSearch, setGlobalSearch] = React.useState('');
     const [groupByColumn, setGroupByColumn] = React.useState<string | null>(null);
+    const [selectedCount, setSelectedCount] = React.useState(0);
+
+    const selectionRef = React.useRef<Selection>(new Selection({
+        selectionMode: SelectionMode.multiple,
+        onSelectionChanged: () => {
+            setSelectedCount(selectionRef.current.getSelectedCount());
+        },
+    }));
     const [isColumnsPanelOpen, setIsColumnsPanelOpen] = React.useState(false);
     const [menuState, setMenuState] = React.useState<{ column: string; target: HTMLElement } | null>(null);
     const [filterCallout, setFilterCallout] = React.useState<{ column: string; target: HTMLElement } | null>(null);
@@ -390,8 +400,10 @@ export const Grid = React.memo((props: GridProps) => {
                     groups={groups}
                     layoutMode={DetailsListLayoutMode.fixedColumns}
                     constrainMode={ConstrainMode.unconstrained}
-                    setKey="set"
+                    setKey={`set-${orderedItems.length}`}
                     checkboxVisibility={CheckboxVisibility.always}
+                    selection={selectionRef.current}
+                    selectionMode={SelectionMode.multiple}
                 />
                 {itemsLoading && (
                     <div
@@ -412,6 +424,21 @@ export const Grid = React.memo((props: GridProps) => {
                     </div>
                 )}
             </Stack.Item>
+
+            <Stack
+                horizontal
+                horizontalAlign="end"
+                style={{
+                    padding: '4px 12px',
+                    borderTop: '1px solid #edebe9',
+                    backgroundColor: '#faf9f8',
+                    fontSize: 12,
+                    color: '#605e5c',
+                    flexShrink: 0,
+                }}
+            >
+                <Text>{orderedItems.length} of {sortedRecordIds.length} records{selectedCount > 0 ? ` (${selectedCount} selected)` : ''}</Text>
+            </Stack>
 
             {menuState && (
                 <ContextualMenu

@@ -44,6 +44,8 @@ export interface GridProps {
     itemsLoading: boolean;
     displayedColumns: string;
     setDisplayedColumns: (cols: string) => void;
+    onAssign?: (selectedIds: string[]) => void;
+    onUnassign?: (selectedIds: string[]) => void;
 }
 
 const onRenderItemColumn = (
@@ -192,6 +194,8 @@ export const Grid = React.memo((props: GridProps) => {
         itemsLoading,
         displayedColumns,
         setDisplayedColumns,
+        onAssign,
+        onUnassign,
     } = props;
 
     // Parse the JSON config to get both visible columns and groups
@@ -217,9 +221,22 @@ export const Grid = React.memo((props: GridProps) => {
     const selectionRef = React.useRef<Selection>(new Selection({
         selectionMode: SelectionMode.multiple,
         onSelectionChanged: () => {
-            setSelectedCount(selectionRef.current.getSelectedCount());
+            const sel = selectionRef.current;
+            if (!sel) return;
+            setSelectedCount(sel.getSelectedCount());
+            const ids: string[] = [];
+            for (const item of sel.getSelection()) {
+                try {
+                    const id = (item as ComponentFramework.PropertyHelper.DataSetApi.EntityRecord).getRecordId();
+                    if (id) ids.push(id);
+                } catch {
+                    // skip items that don't have getRecordId
+                }
+            }
+            selectedIdsRef.current = ids;
         },
     }));
+    const selectedIdsRef = React.useRef<string[]>([]);
     const [isColumnsPanelOpen, setIsColumnsPanelOpen] = React.useState(false);
     const [menuState, setMenuState] = React.useState<{ column: string; target: HTMLElement } | null>(null);
     const [filterCallout, setFilterCallout] = React.useState<{ column: string; target: HTMLElement } | null>(null);
@@ -567,7 +584,7 @@ export const Grid = React.memo((props: GridProps) => {
 
             <Stack
                 horizontal
-                horizontalAlign="end"
+                verticalAlign="center"
                 style={{
                     padding: '4px 12px',
                     borderTop: '1px solid #edebe9',
@@ -577,6 +594,26 @@ export const Grid = React.memo((props: GridProps) => {
                     flexShrink: 0,
                 }}
             >
+                <Stack.Item grow>
+                    {selectedCount > 0 && (
+                        <Stack horizontal tokens={{ childrenGap: 8 }}>
+                            <DefaultButton
+                                text="Assign"
+                                onClick={() => {
+                                    if (onAssign) onAssign(selectedIdsRef.current);
+                                }}
+                                styles={{ root: { height: 28, fontSize: 12 } }}
+                            />
+                            <DefaultButton
+                                text="Unassign"
+                                onClick={() => {
+                                    if (onUnassign) onUnassign(selectedIdsRef.current);
+                                }}
+                                styles={{ root: { height: 28, fontSize: 12 } }}
+                            />
+                        </Stack>
+                    )}
+                </Stack.Item>
                 <Text>{orderedItems.length} of {sortedRecordIds.length} records{selectedCount > 0 ? ` (${selectedCount} selected)` : ''}</Text>
             </Stack>
 

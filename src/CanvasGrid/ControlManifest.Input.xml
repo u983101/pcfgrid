@@ -28,6 +28,11 @@
     <property name="VisibleColumns" display-name-key="Visible_Columns_Disp" description-key="Visible_Columns_Desc" of-type="SingleLine.Text" usage="input" />
     <!-- Output property to show which columns are currently displayed -->
     <property name="DisplayOutput" display-name-key="Display_Output_Disp" description-key="Display_Output_Desc" of-type="SingleLine.Text" usage="output" />
+    <!-- Output property to pass selected record IDs to the canvas app -->
+    <property name="SelectedRecordIds" display-name-key="Selected_Record_Ids_Disp" description-key="Selected_Record_Ids_Desc" of-type="SingleLine.Text" usage="output" />
+    <!-- Events that canvas app makers can bind Power Fx to -->
+    <event name="OnAssign" display-name-key="OnAssign_Display_Key" description-key="OnAssign_Desc_Key" />
+    <event name="OnUnassign" display-name-key="OnUnassign_Display_Key" description-key="OnUnassign_Desc_Key" />
     <resources>
       <code path="index.ts" order="1"/>
       <css path="css/ReadOnlyGrid.css" order="1" />

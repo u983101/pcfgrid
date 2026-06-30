@@ -8,6 +8,8 @@ export class CanvasGrid implements ComponentFramework.StandardControl<IInputs, I
     private root: ReactDOM.Root;
     private notifyOutputChanged: () => void;
     private displayedColumns = '';
+    private selectedRecordIds = '';
+    private context: ComponentFramework.Context<IInputs> | null = null;
 
     public init(
         context: ComponentFramework.Context<IInputs>,
@@ -22,6 +24,8 @@ export class CanvasGrid implements ComponentFramework.StandardControl<IInputs, I
     }
 
     public updateView(context: ComponentFramework.Context<IInputs>): void {
+        this.context = context;
+
         const dataset = context.parameters.sampleDataSet;
         
         const allocatedWidth = parseInt(context.mode.allocatedWidth as unknown as string) || 0;
@@ -42,13 +46,26 @@ export class CanvasGrid implements ComponentFramework.StandardControl<IInputs, I
                     this.displayedColumns = cols;
                     this.notifyOutputChanged();
                 },
+                onAssign: (ids: string[]) => {
+                    this.selectedRecordIds = JSON.stringify(ids);
+                    this.notifyOutputChanged();
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    if (this.context) { (this.context.events as any).OnAssign(); }
+                },
+                onUnassign: (ids: string[]) => {
+                    this.selectedRecordIds = JSON.stringify(ids);
+                    this.notifyOutputChanged();
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    if (this.context) { (this.context.events as any).OnUnassign(); }
+                },
             })
         );
     }
 
     public getOutputs(): IOutputs {
         return {
-            DisplayOutput: this.displayedColumns
+            DisplayOutput: this.displayedColumns,
+            SelectedRecordIds: this.selectedRecordIds,
         };
     }
 

@@ -1,0 +1,6 @@
+/* Hide the hover-only behavior and show the selection checkbox permanently */
+.show-selection-checkbox .ms-Selection-checkButton,
+.show-selection-checkbox .ms-Selection-checkButton--hidden {
+    visibility: visible !important;
+    opacity: 1;
+}

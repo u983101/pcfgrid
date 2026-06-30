@@ -41,7 +41,7 @@ export class CanvasGrid implements ComponentFramework.StandardControl<IInputs, I
                 setDisplayedColumns: (cols: string) => {
                     this.displayedColumns = cols;
                     this.notifyOutputChanged();
-                }
+                },
             })
         );
     }

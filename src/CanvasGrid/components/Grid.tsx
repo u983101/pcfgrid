@@ -30,6 +30,11 @@ import {
 
 initializeIcons(undefined, { disableWarnings: true });
 
+export interface ColumnGroup {
+    label: string;
+    columns: string[];
+}
+
 export interface GridProps {
     width?: number;
     height?: number;
@@ -40,10 +45,6 @@ export interface GridProps {
     displayedColumns: string;
     setDisplayedColumns: (cols: string) => void;
 }
-
-const onRenderDetailsHeader: IRenderFunction<IDetailsHeaderProps> = (props, defaultRender) => {
-    return defaultRender ? defaultRender(props) : null;
-};
 
 const onRenderItemColumn = (
     item?: ComponentFramework.PropertyHelper.DataSetApi.EntityRecord,
@@ -56,13 +57,58 @@ const onRenderItemColumn = (
     return <></>;
 };
 
-function parseColumnString(colString: string): Set<string> {
-    const result = new Set<string>();
-    colString.split(',').forEach(col => {
-        const trimmed = col.trim();
-        if (trimmed) result.add(trimmed);
-    });
-    return result;
+function parseColumnConfig(json: string): { visibleColumns: string[]; columnGroups: ColumnGroup[] } {
+    const columnGroups: ColumnGroup[] = [];
+    const visibleColumns: string[] = [];
+
+    if (!json || !json.trim()) {
+        return { visibleColumns, columnGroups };
+    }
+
+    try {
+        const parsed = JSON.parse(json);
+        if (Array.isArray(parsed)) {
+            if (parsed.length === 0) return { visibleColumns, columnGroups };
+
+            // Check if it's a groups array or flat names array
+            if (typeof parsed[0] === 'object' && parsed[0] !== null && parsed[0].label && parsed[0].columns) {
+                // Groups format
+                for (const group of parsed) {
+                    if (group.label && Array.isArray(group.columns)) {
+                        const groupColNames: string[] = [];
+                        for (const col of group.columns) {
+                            if (typeof col === 'string' && col.trim()) {
+                                if (!visibleColumns.includes(col.trim())) {
+                                    visibleColumns.push(col.trim());
+                                }
+                                groupColNames.push(col.trim());
+                            }
+                        }
+                        if (groupColNames.length > 0) {
+                            columnGroups.push({ label: group.label, columns: groupColNames });
+                        }
+                    }
+                }
+            } else {
+                // Flat names array — preserve order
+                for (const item of parsed) {
+                    if (typeof item === 'string' && item.trim() && !visibleColumns.includes(item.trim())) {
+                        visibleColumns.push(item.trim());
+                    }
+                }
+            }
+        }
+    } catch {
+        // Fallback: treat as comma-delimited (backward compatible)
+        json.split(',').forEach(col => {
+            const trimmed = col.trim();
+            if (trimmed && !visibleColumns.includes(trimmed)) {
+                visibleColumns.push(trimmed);
+            }
+        });
+    }
+
+    return { visibleColumns, columnGroups };
 }
 
 function applyTextFilters(
@@ -148,12 +194,15 @@ export const Grid = React.memo((props: GridProps) => {
         setDisplayedColumns,
     } = props;
 
-    const [visibleColumns, setVisibleColumns] = React.useState<Set<string>>(() => {
-        if (displayedColumns && displayedColumns.trim()) {
-            return parseColumnString(displayedColumns);
-        }
-        return new Set(columns.filter(c => !c.isHidden).map(c => c.name));
+    // Parse the JSON config to get both visible columns and groups
+    const columnConfigRef = React.useRef(parseColumnConfig(displayedColumns));
+
+    const [visibleColumns, setVisibleColumns] = React.useState<string[]>(() => {
+        const initial = columnConfigRef.current.visibleColumns;
+        return initial.length > 0 ? initial : columns.filter(c => !c.isHidden).map(c => c.name);
     });
+
+    const [columnGroups, setColumnGroups] = React.useState<ColumnGroup[]>(columnConfigRef.current.columnGroups);
 
     const [sortState, setSortState] = React.useState<{ name: string | null; descending: boolean }>({
         name: null,
@@ -175,23 +224,106 @@ export const Grid = React.memo((props: GridProps) => {
     const [menuState, setMenuState] = React.useState<{ column: string; target: HTMLElement } | null>(null);
     const [filterCallout, setFilterCallout] = React.useState<{ column: string; target: HTMLElement } | null>(null);
 
+    const onRenderDetailsHeader = React.useCallback<IRenderFunction<IDetailsHeaderProps>>(
+        (headerProps, defaultRender) => {
+            if (!defaultRender) return null;
+
+            if (!columnGroups || columnGroups.length === 0) {
+                return defaultRender(headerProps);
+            }
+
+            const headerColumns = headerProps?.columns || [];
+            const indentWidth = headerProps?.indentWidth || 48;
+
+            let groupOffset = indentWidth;
+
+            const groupCells = columnGroups.map(group => {
+                let groupWidth = 0;
+                group.columns.forEach(colName => {
+                    const match = headerColumns.find(hc => hc.key === colName);
+                    if (match) groupWidth += match.currentWidth || match.calculatedWidth || 150;
+                });
+
+                const cell = (
+                    <div
+                        key={group.label}
+                        style={{
+                            position: 'absolute',
+                            left: groupOffset,
+                            width: groupWidth,
+                            top: 0,
+                            bottom: 0,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontWeight: 600,
+                            fontSize: 11,
+                            color: '#323130',
+                            borderRight: '1px solid #edebe9',
+                            boxSizing: 'border-box',
+                            padding: '4px 8px',
+                            overflow: 'hidden',
+                            whiteSpace: 'nowrap',
+                            textOverflow: 'ellipsis',
+                        }}
+                    >
+                        {group.label}
+                    </div>
+                );
+                groupOffset += groupWidth;
+                return cell;
+            });
+
+            return (
+                <div style={{ backgroundColor: '#f3f2f1', position: 'relative' }}>
+                    <div style={{ height: 24, position: 'relative', borderBottom: '1px solid #d2d0ce' }}>
+                        {groupCells}
+                    </div>
+                    <div>
+                        {defaultRender(headerProps)}
+                    </div>
+                </div>
+            );
+        },
+        [columnGroups]
+    );
+
     const prevDisplayedColumns = React.useRef(displayedColumns);
     if (displayedColumns !== prevDisplayedColumns.current) {
         prevDisplayedColumns.current = displayedColumns;
-        if (displayedColumns && displayedColumns.trim()) {
-            const parsed = parseColumnString(displayedColumns);
-            if (parsed.size > 0) {
-                setVisibleColumns(parsed);
-            }
+        const { visibleColumns: parsed, columnGroups: parsedGroups } = parseColumnConfig(displayedColumns);
+        if (parsed.length > 0) {
+            setVisibleColumns(parsed);
+        }
+        if (parsedGroups.length > 0) {
+            setColumnGroups(parsedGroups);
         }
     }
 
     const prevVisibleRef = React.useRef(visibleColumns);
+    const prevGroupsRef = React.useRef(columnGroups);
+
+    // Columns that are in the dataset but not defined in the VisibleColumns input
+    const configuredColumns = React.useMemo(() => {
+        const configured: string[] = [];
+        if (columnGroups.length > 0) {
+            columnGroups.forEach(g => g.columns.forEach(c => { if (!configured.includes(c)) configured.push(c); }));
+        }
+        return configured;
+    }, [columnGroups]);
     React.useEffect(() => {
-        if (prevVisibleRef.current !== visibleColumns) {
+        if (prevVisibleRef.current !== visibleColumns || prevGroupsRef.current !== columnGroups) {
             prevVisibleRef.current = visibleColumns;
-            const colsArray = Array.from(visibleColumns).sort();
-            setDisplayedColumns(colsArray.join(', '));
+            prevGroupsRef.current = columnGroups;
+            if (columnGroups.length > 0) {
+                const groupsJson = columnGroups.map(g => ({
+                    label: g.label,
+                    columns: g.columns.filter(c => visibleColumns.includes(c)),
+                })).filter(g => g.columns.length > 0);
+                setDisplayedColumns(JSON.stringify(groupsJson));
+            } else {
+                setDisplayedColumns(JSON.stringify(visibleColumns));
+            }
         }
     });
 
@@ -204,7 +336,7 @@ export const Grid = React.memo((props: GridProps) => {
             ? rawItems
             : rawItems.filter(item => {
                   for (const col of columns) {
-                      if (col.isHidden || !visibleColumns.has(col.name)) continue;
+                      if (col.isHidden || !visibleColumns.includes(col.name)) continue;
                       const val = (item?.getFormattedValue(col.name) || '').toLowerCase();
                       if (val.indexOf(searchText) !== -1) return true;
                   }
@@ -295,7 +427,7 @@ export const Grid = React.memo((props: GridProps) => {
 
     const gridColumns = React.useMemo(() => {
         return columns
-            .filter((col) => !col.isHidden && visibleColumns.has(col.name))
+            .filter((col) => !col.isHidden && visibleColumns.includes(col.name))
             .map((col) => {
                 const headerWidth = col.displayName.length * 8 + 24;
                 const dataWidth = col.visualSizeFactor > 0 ? col.visualSizeFactor : 150;
@@ -320,13 +452,10 @@ export const Grid = React.memo((props: GridProps) => {
 
     const toggleColumn = (columnName: string) => {
         setVisibleColumns(prev => {
-            const next = new Set(prev);
-            if (next.has(columnName)) {
-                next.delete(columnName);
-            } else {
-                next.add(columnName);
+            if (prev.includes(columnName)) {
+                return prev.filter(c => c !== columnName);
             }
-            return next;
+            return [...prev, columnName];
         });
     };
 
@@ -380,31 +509,40 @@ export const Grid = React.memo((props: GridProps) => {
                     headerText="Visible Columns"
                 >
                     <Stack tokens={{ childrenGap: 5 }} style={{ padding: '8px' }}>
-                        {columns.map(col => (
-                            <Checkbox
-                                key={col.name}
-                                label={col.displayName}
-                                checked={visibleColumns.has(col.name)}
-                                onChange={(ev, checked) => toggleColumn(col.name)}
-                            />
-                        ))}
+                        {columns
+                            .filter(col => !configuredColumns.includes(col.name))
+                            .map(col => (
+                                <Checkbox
+                                    key={col.name}
+                                    label={col.displayName}
+                                    checked={visibleColumns.includes(col.name)}
+                                    onChange={(ev, checked) => toggleColumn(col.name)}
+                                />
+                            ))}
+                        {columns.filter(col => !configuredColumns.includes(col.name)).length === 0 && (
+                            <Text variant="small" styles={{ root: { color: '#605e5c', padding: '8px', fontStyle: 'italic' } }}>
+                                No additional columns available.
+                            </Text>
+                        )}
                     </Stack>
                 </Panel>
             </Stack>
-            <Stack.Item grow className="show-selection-checkbox" style={{ position: 'relative', backgroundColor: 'white' }}>
-                <DetailsList
-                    columns={gridColumns}
-                    onRenderItemColumn={onRenderItemColumn}
-                    onRenderDetailsHeader={onRenderDetailsHeader}
-                    items={orderedItems}
-                    groups={groups}
-                    layoutMode={DetailsListLayoutMode.fixedColumns}
-                    constrainMode={ConstrainMode.unconstrained}
-                    setKey={`set-${orderedItems.length}`}
-                    checkboxVisibility={CheckboxVisibility.always}
-                    selection={selectionRef.current}
-                    selectionMode={SelectionMode.multiple}
-                />
+            <Stack.Item grow className="show-selection-checkbox" style={{ position: 'relative', backgroundColor: 'white', overflow: 'hidden', minHeight: 0 }}>
+                <div style={{ height: '100%', overflow: 'auto' }}>
+                    <DetailsList
+                        columns={gridColumns}
+                        onRenderItemColumn={onRenderItemColumn}
+                        onRenderDetailsHeader={onRenderDetailsHeader}
+                        items={orderedItems}
+                        groups={groups}
+                        layoutMode={DetailsListLayoutMode.fixedColumns}
+                        constrainMode={ConstrainMode.unconstrained}
+                        setKey={`set-${orderedItems.length}`}
+                        checkboxVisibility={CheckboxVisibility.always}
+                        selection={selectionRef.current}
+                        selectionMode={SelectionMode.multiple}
+                    />
+                </div>
                 {itemsLoading && (
                     <div
                         style={{
